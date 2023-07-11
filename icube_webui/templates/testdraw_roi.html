@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <input type="file" id="upload" accept="image/*">
+    <canvas id="canvas" style="border:1px solid #d3d3d3;">
+        Your browser does not support the HTML5 canvas tag.
+    </canvas>
+
+    <select id="actionDropdown">
+        <option value="">Select Label Type</option>
+        <option value="action1">LED</option>
+        <option value="action2">SWITCH</option>
+        <option value="action3">GAUGE</option>
+    </select>
+
+    <button id="newRect" style="display: none; background-color: green; color: white;">Draw New Bounding Box</button>
+    <button id="resetButton" style="background-color: red; color: white;">Reset Bounding Box</button>
+    <button id="submitButton" style="background-color: blue; color: white;">Submit Bounding Boxes</button>
+
+    <script>
+        var canvas = document.getElementById('canvas');
+        var ctx = canvas.getContext('2d');
+        var rect = {};
+        var drag = false;
+        var rects = [];
+        var dropdown = document.getElementById("actionDropdown");
+        var upload = document.getElementById("upload");
+        var image = new Image();
+
+        canvas.style.pointerEvents = "none"; // Disable canvas until an action is selected
+
+        upload.addEventListener('change', function(e) {
+            var reader = new FileReader();
+            reader.onload = function(event) {
+                image = new Image();
+                image.onload = function() {
+                    // Set canvas dimensions based on image dimensions
+                    canvas.width = image.width;
+                    canvas.height = image.height;
+                    
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+                }
+                image.src = event.target.result;
+            }
+            reader.readAsDataURL(e.target.files[0]);
+        });
+
+        dropdown.addEventListener('change', function() {
+            if (dropdown.value) {
+                canvas.style.pointerEvents = "auto"; // Enable canvas when an action is selected
+            } else {
+                canvas.style.pointerEvents = "none"; // Disable canvas when the dropdown is set to the placeholder
+            }
+        });
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clearing old drawings
+            ctx.drawImage(image, 0, 0, canvas.width, canvas.height); // Redrawing the image
+            rects.forEach((rect, index) => {
+                ctx.strokeStyle = rect.color; // Set the rectangle color
+                ctx.strokeRect(rect.startX, rect.startY, rect.w, rect.h); // Drawing old rectangles
+                ctx.fillStyle = "#000000"; // Set the text color
+                ctx.fillText(rect.type, rect.startX, rect.startY - 5); // Display type text
+            });
+            if (drag) {
+                ctx.strokeStyle = rect.color; // Set the rectangle color
+                ctx.strokeRect(rect.startX, rect.startY, rect.w, rect.h); // Drawing the rectangle being drawn
+            }
+        }
+
+        function mouseDown(e) {
+            if (drag) { // If a rectangle is currently being drawn, it is reset
+                drag = false;
+                rect = {};
+                draw();
+            }
+            rect.startX = e.pageX - this.offsetLeft;
+            rect.startY = e.pageY - this.offsetTop;
+            rect.color = getRandomColor(); // Get a random color for the rectangle
+            rect.type = dropdown.options[dropdown.selectedIndex].text; // Get the selected type
+            drag = true;
+        }
+
+        function mouseUp() {
+            if (!drag) return;
+            drag = false;
+            // Now the rectangle has been drawn and finalized, we send it to the API
+            var rectInfo = JSON.stringify(rect);
+            rects.push(rect);
+            
+            // create a new canvas
+            var canvas2 = document.createElement('canvas');
+            canvas2.width = rect.w;
+            canvas2.height = rect.h;
+            var ctx2 = canvas2.getContext('2d');
+            
+            // draw the image portion defined by the bounding box on the new canvas
+            ctx2.drawImage(image, rect.startX, rect.startY, rect.w, rect.h, 0, 0, rect.w, rect.h);
+            
+            // convert the new canvas to a Base64 string
+            rect.image = canvas2.toDataURL();
+
+            rect = {};
+            draw();
+            document.getElementById("newRect").style.display = "block";
+            canvas.style.pointerEvents = "none"; // Disable canvas after drawing
+}
+
+        function mouseMove(e) {
+            if (drag) {
+                rect.w = (e.pageX - this.offsetLeft) - rect.startX;
+                rect.h = (e.pageY - this.offsetTop) - rect.startY;
+                draw();
+            }
+        }
+
+        function resetCurrentROI() {
+            rects.pop(); // Remove the last drawn rectangle (current ROI)
+            draw(); // Redraw the canvas
+        }
+
+        function getRandomColor() {
+            var letters = "0123456789ABCDEF";
+            var color = "#";
+            for (var i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+        document.getElementById("newRect").addEventListener("click", function() {
+            this.style.display = "none";
+            dropdown.value = ""; // Reset dropdown
+        });
+
+        document.getElementById("resetButton").addEventListener("click", resetCurrentROI); // Add event listener to reset button
+
+        canvas.addEventListener('mousedown', mouseDown, false);
+        canvas.addEventListener('mouseup', mouseUp, false);
+        canvas.addEventListener('mousemove', mouseMove, false);
+
+        document.getElementById("submitButton").addEventListener("click", function() {
+        fetch('/submit', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({rects: rects, image: image.src}),
+
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Success:', data);
+    })
+    .catch((error) => {
+        console.error('Error:', error);
+    });
+});
+    </script>
+</body>
+</html>
+
+

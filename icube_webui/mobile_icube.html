@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+    <input type="file" id="upload" accept="image/*">
+    <canvas id="canvas" style="border:1px solid #d3d3d3; width:100%; max-width:500px; height:auto;">
+        Your browser does not support the HTML5 canvas tag.
+    </canvas>
+
+    <select id="actionDropdown">
+        <option value="">Select Label Type</option>
+        <option value="action1">LED</option>
+        <option value="action2">SWITCH</option>
+        <option value="action3">GAUGE</option>
+    </select>
+
+    <button id="newRect" style="display: none; background-color: green; color: white;">Draw New Bounding Box</button>
+    <button id="resetButton" style="background-color: red; color: white;">Reset Bounding Box</button>
+
+    <script>
+        var canvas = document.getElementById('canvas');
+        var ctx = canvas.getContext('2d');
+        var rect = {};
+        var drag = false;
+        var rects = [];
+        var dropdown = document.getElementById("actionDropdown");
+        var upload = document.getElementById("upload"); 
+        var image = new Image();
+
+        canvas.style.pointerEvents = "none"; // Disable canvas until an action is selected
+
+        upload.addEventListener('change', function(e) {
+            var reader = new FileReader();
+            reader.onload = function(event) {
+                image = new Image();
+                image.onload = function() {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+                }
+                image.src = event.target.result;
+            }
+            reader.readAsDataURL(e.target.files[0]);
+        });
+
+        dropdown.addEventListener('change', function() {
+            if (dropdown.value) {
+                canvas.style.pointerEvents = "auto"; // Enable canvas when an action is selected
+            } else {
+                canvas.style.pointerEvents = "none"; // Disable canvas when the dropdown is set to the placeholder
+            }
+        });
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clearing old drawings
+            ctx.drawImage(image, 0, 0, canvas.width, canvas.height); // Redrawing the image
+            rects.forEach((rect, index) => {
+                ctx.strokeStyle = rect.color; // Set the rectangle color
+                ctx.strokeRect(rect.startX, rect.startY, rect.w, rect.h); // Drawing old rectangles
+                ctx.fillStyle = "#000000"; // Set the text color
+                ctx.fillText(rect.type, rect.startX, rect.startY - 5); // Display type text
+            });
+            if (drag) {
+                ctx.strokeStyle = rect.color; // Set the rectangle color
+                ctx.strokeRect(rect.startX, rect.startY, rect.w, rect.h); // Drawing the rectangle being drawn
+            }
+        }
+
+        function touchStart(e) {
+            var touch = e.touches[0];
+            if (drag) { // If a rectangle is currently being drawn, it is reset
+                drag = false;
+                rect = {};
+                draw();
+            }
+            rect.startX = touch.clientX - this.offsetLeft;
+            rect.startY = touch.clientY - this.offsetTop;
+            rect.color = getRandomColor(); // Get a random color for the rectangle
+            rect.type = dropdown.options[dropdown.selectedIndex].text; // Get the selected type
+            drag = true;
+        }
+
+        function touchEnd() {
+            if (!drag) return;
+            drag = false;
+            // Now the rectangle has been drawn and finalized, we send it to the API
+            var rectInfo = JSON.stringify(rect);
+            rects.push(rect);
+            rect = {};
+            draw();
+            document.getElementById("newRect").style.display = "block";
+            canvas.style.pointerEvents = "none"; // Disable canvas after drawing
+        }
+
+        function touchMove(e) {
+            var touch = e.touches[0];
+            if (drag) {
+                rect.w = touch.clientX - this.offsetLeft - rect.startX;
+                rect.h = touch.clientY - this.offsetTop - rect.startY;
+                draw();
+            }
+        }
+
+        function resetCurrentROI() {
+            rects.pop(); // Remove the last drawn rectangle (current ROI)
+            draw(); // Redraw the canvas
+        }
+
+        function getRandomColor() {
+            var letters = "0123456789ABCDEF";
+            var color = "#";
+            for (var i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+        document.getElementById("newRect").addEventListener("click", function() {
+            this.style.display = "none";
+            dropdown.value = ""; // Reset dropdown
+        });
+
+        document.getElementById("resetButton").addEventListener("click", resetCurrentROI); // Add event listener to reset button
+
+        canvas.addEventListener('touchstart', touchStart, false);
+        canvas.addEventListener('touchend', touchEnd, false);
+        canvas.addEventListener('touchmove', touchMove, false);
+    </script>
+</body>
+</html>
